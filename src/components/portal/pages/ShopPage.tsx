@@ -271,6 +271,9 @@ export function ShopPage() {
       {can("manage_products") ? (
         <section className="space-y-2 rounded-lg border border-border bg-card p-4">
           <p className="text-sm font-semibold">Webshop-hero (banner op de webshoppagina)</p>
+          <p className="text-xs text-muted-foreground">
+            Zonder eigen beeld toont de webshop het standaardbeeld.
+          </p>
           <div className="flex flex-wrap items-center gap-3">
             {hero.data?.url ? (
               <img loading="lazy" onError={handleImageError}
@@ -279,13 +282,30 @@ export function ShopPage() {
                 className="h-20 w-32 rounded-md border border-border object-cover"
               />
             ) : (
-              <div className="grid h-20 w-32 place-items-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
-                Geen afbeelding
+              <div className="grid h-20 w-32 place-items-center rounded-md border border-dashed border-border text-center text-xs text-muted-foreground">
+                Standaardbeeld
               </div>
             )}
-            <Button type="button" variant="outline" size="sm" onClick={() => setHeroPickerOpen(true)}>
-              <ImagePlus className="size-4" /> {t("shop.images.addFromLibrary")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setHeroPickerOpen(true)}>
+                <ImagePlus className="size-4" />{" "}
+                {hero.data?.url ? "Vervang / kies nieuw" : t("shop.images.addFromLibrary")}
+              </Button>
+              {hero.data?.url ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  disabled={clearHero.isPending}
+                  onClick={() => clearHero.mutate()}
+                  aria-label="Verwijder afbeelding"
+                >
+                  {clearHero.isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  Verwijder afbeelding
+                </Button>
+              ) : null}
+            </div>
           </div>
           <ImagePickerModal
             open={heroPickerOpen}
