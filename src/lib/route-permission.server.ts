@@ -18,9 +18,22 @@ export async function guardApiRoute(
   request: Request,
   permission: string,
 ): Promise<{ auth: RouteGuardAuth } | { response: Response }> {
+  return guardApiRouteAny(request, [permission]);
+}
+
+/** Zoals `guardApiRoute`, maar één van de opgegeven rechten volstaat. */
+export async function guardApiRouteAny(
+  request: Request,
+  permissions: readonly string[],
+): Promise<{ auth: RouteGuardAuth } | { response: Response }> {
   const header = request.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) {
-    return { response: Response.json({ error: "Niet aangemeld." }, { status: 401 }) };
+    return {
+      response: Response.json(
+        { error: "Niet aangemeld. Log opnieuw in.", code: "unauthenticated" },
+        { status: 401 },
+      ),
+    };
   }
   const token = header.slice(7).trim();
 
@@ -29,18 +42,43 @@ export async function guardApiRoute(
     const { verifyAuthToken } = await import("@/lib/neon-data.server");
     claims = (await verifyAuthToken(token)) as never;
   } catch {
-    return { response: Response.json({ error: "Je sessie is verlopen." }, { status: 401 }) };
+    return {
+      response: Response.json(
+        { error: "Je sessie is verlopen. Log opnieuw in.", code: "session_expired" },
+        { status: 401 },
+      ),
+    };
   }
 
   const userId = String(claims.sub ?? "");
-  const { assertPermission, isPermissionDenied } = await import("@/lib/permission-core.server");
+  const { assertAnyPermission, isPermissionDenied, resolveAccess } = await import(
+    "@/lib/permission-core.server"
+  );
   try {
-    await assertPermission({ userId, claims }, permission);
+    await assertAnyPermission({ userId, claims }, [...permissions]);
   } catch (error) {
     if (isPermissionDenied(error)) {
+      // Geef mee welke rollen de server zag, zodat de melding meteen bruikbaar is.
+      let roles: string[] = [];
+      let email: string | null = null;
+      try {
+        const access = await resolveAccess({ userId, claims });
+        roles = access.roles;
+        email = access.email;
+      } catch {
+        /* diagnose is best-effort */
+      }
       return {
         response: Response.json(
-          { error: "Je hebt geen rechten voor deze actie.", code: "permission_denied" },
+          {
+            error: `Je hebt geen rechten voor deze actie (${email ?? "onbekend adres"}, rollen: ${
+              roles.length ? roles.join(", ") : "geen"
+            }).`,
+            code: "permission_denied",
+            roles,
+            email,
+            required: permissions,
+          },
           { status: 403 },
         ),
       };
