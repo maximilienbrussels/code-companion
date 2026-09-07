@@ -52,42 +52,6 @@ function iconFor(line: string): string {
   return "🚌";
 }
 
-/** MIVB/STIB realtime wachttijden voor IJzer/Yser en Schipperijkaai. */
-async function stibDepartures(key: string): Promise<Departure[]> {
-  let data: unknown = null;
-  for (const base of STIB_URLS) {
-    data = await fetchJson(`${base}/${STIB_POINTS.join("%2C")}`, {
-      "Ocp-Apim-Subscription-Key": key,
-      Accept: "application/json",
-    });
-    if (data && typeof data === "object") break;
-    data = null;
-  }
-  if (!data || typeof data !== "object") return [];
-
-  const points = (data as { points?: unknown[] }).points ?? [];
-  const out: Departure[] = [];
-  for (const point of points) {
-    const p = point as {
-      pointId?: string;
-      passingTimes?: { lineId?: string; destination?: { fr?: string; nl?: string }; expectedArrivalTime?: string }[];
-    };
-    const stop = p.pointId && ["1234", "1235"].includes(p.pointId) ? "Schipperijkaai / Quai du Batelage" : "IJzer / Yser";
-    for (const t of p.passingTimes ?? []) {
-      const line = String(t.lineId ?? "");
-      out.push({
-        icon: iconFor(line),
-        line,
-        destination: t.destination?.nl ?? t.destination?.fr ?? "",
-        minutes: minutesUntil(t.expectedArrivalTime),
-        stop,
-      });
-    }
-  }
-  return out
-    .sort((a, b) => (a.minutes ?? 99) - (b.minutes ?? 99))
-    .slice(0, 6);
-}
 
 /** NMBS/SNCB live vertrektijden in Brussel-Noord. */
 async function nmbsDepartures(): Promise<Departure[]> {
