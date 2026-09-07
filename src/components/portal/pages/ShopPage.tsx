@@ -115,6 +115,14 @@ export function ShopPage() {
     },
     onError: (e: Error) => toast.error(e.message || t("shop.toast.saveFailed")),
   });
+  const clearHero = useMutation({
+    mutationFn: async () => clearShopHero(),
+    onSuccess: () => {
+      toast.success("Afbeelding verwijderd — de webshop toont nu het standaardbeeld.");
+      void queryClient.invalidateQueries({ queryKey: ["portal", "shop-hero"] });
+    },
+    onError: (e: Error) => toast.error(e.message || t("shop.toast.saveFailed")),
+  });
 
   const orders = useQuery({
     queryKey: ["portal", "orders"],
