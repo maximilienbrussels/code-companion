@@ -16,9 +16,6 @@ type Departure = {
 };
 
 /** iRail is de open NMBS/SNCB-bron voor live vertrektijden (geen sleutel nodig). */
-
-
-/** iRail is de open NMBS/SNCB-bron voor live vertrektijden (geen sleutel nodig). */
 const NMBS_URL =
   "https://api.irail.be/liveboard/?station=Brussels-North&format=json&arrdep=departure&lang=nl";
 
