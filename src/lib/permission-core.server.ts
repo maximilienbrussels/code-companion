@@ -132,18 +132,32 @@ export async function isFullAccessUser(context: PermissionContext): Promise<bool
   return (await resolveAccess(context)).fullAccess;
 }
 
-/** Heeft deze gebruiker het gevraagde recht? */
-export async function hasPermission(
+/** Alle toegekende rechten uit de matrix voor deze rollen (leeg bij fouten). */
+export async function loadGrantedPermissions(roles: string[]): Promise<string[]> {
+  if (roles.length === 0) return [];
+  try {
+    const rows = (await (await sql())`
+      select distinct permission from role_permissions
+      where allowed and lower(role::text) = any(${roles})
+    `) as Array<{ permission: string }>;
+    return rows.map((r) => r.permission);
+  } catch {
+    return [];
+  }
+}
+
+/** Heeft deze gebruiker (minstens één van) de gevraagde rechten? */
+export async function hasAnyPermission(
   context: PermissionContext,
-  permission: string,
+  permissions: string[],
 ): Promise<boolean> {
   const access = await resolveAccess(context);
   if (access.fullAccess) return true;
-  if (access.roles.length === 0) return false;
+  if (access.roles.length === 0 || permissions.length === 0) return false;
   try {
     const rows = (await (await sql())`
       select 1 from role_permissions
-      where allowed and permission = ${permission} and lower(role::text) = any(${access.roles})
+      where allowed and permission = any(${permissions}) and lower(role::text) = any(${access.roles})
       limit 1
     `) as unknown[];
     return rows.length > 0;
@@ -152,8 +166,36 @@ export async function hasPermission(
   }
 }
 
+/** Heeft deze gebruiker het gevraagde recht? */
+export async function hasPermission(
+  context: PermissionContext,
+  permission: string,
+): Promise<boolean> {
+  return hasAnyPermission(context, [permission]);
+}
+
 /** Werpt een duidelijke fout wanneer het recht ontbreekt. */
 export async function assertPermission(context: PermissionContext, permission: string) {
   if (await hasPermission(context, permission)) return;
   throw new PermissionDeniedError();
 }
+
+/** Werpt wanneer géén van de opgegeven rechten aanwezig is. */
+export async function assertAnyPermission(context: PermissionContext, permissions: string[]) {
+  if (await hasAnyPermission(context, permissions)) return;
+  throw new PermissionDeniedError();
+}
+
+/**
+ * Rechten die volstaan om beelden op te laden of te kiezen. Wie inhoud,
+ * producten, academie of diensten mag beheren, moet ook beelden kunnen plaatsen.
+ */
+export const UPLOAD_PERMISSIONS = [
+  "manage_media",
+  "manage_content",
+  "manage_products",
+  "manage_academy",
+  "manage_services",
+  "manage_settings",
+  "manage_team",
+] as const;

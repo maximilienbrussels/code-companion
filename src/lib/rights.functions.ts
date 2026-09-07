@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-middleware";
-import { isSuperAdminEmail } from "@/lib/superadmin";
+
 
 export const PERMISSIONS = [
   "view_today",
@@ -70,70 +70,27 @@ async function sql() {
   return db();
 }
 
-/** E-mailadres van de ingelogde gebruiker (token of profiel). */
-async function resolveEmail(context: Ctx): Promise<string | null> {
-  const fromToken = (context.claims as { email?: string } | null)?.email;
-  if (fromToken) return fromToken.trim().toLowerCase();
-  try {
-    const rows = (await (await sql())`
-      select email from profiles where id = ${context.userId}::uuid limit 1
-    `) as Array<{ email: string | null }>;
-    const email = rows[0]?.email;
-    return email ? email.trim().toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Alle rechten van de ingelogde gebruiker, met owner-override. */
+/**
+ * Alle rechten van de ingelogde gebruiker. Steunt op dezelfde centrale
+ * controle als de API-routes (`permission-core.server.ts`), zodat de knoppen
+ * in de interface en de server nooit van mening verschillen.
+ */
 async function loadMyRights(
   context: Ctx,
 ): Promise<{ roles: RoleKey[]; permissions: Permission[]; isOwner: boolean; email: string | null }> {
-  const email = await resolveEmail(context);
-  const db = await sql();
+  const { resolveAccess, loadGrantedPermissions } = await import("./permission-core.server");
+  const access = await resolveAccess({ userId: context.userId, claims: context.claims });
 
-  let roles: RoleKey[] = [];
-  try {
-    const rows = (await db`
-      select role::text as role from user_roles where user_id = ${context.userId}::uuid
-    `) as Array<{ role: string }>;
-    roles = rows.map((r) => r.role);
-  } catch {
-    roles = [];
+  if (access.fullAccess) {
+    const withOwner = [...new Set<RoleKey>([...access.roles, "owner"])];
+    return { roles: withOwner, permissions: [...PERMISSIONS], isOwner: true, email: access.email };
   }
 
-  let isOwner = isSuperAdminEmail(email) || roles.some((r) => (FULL_ACCESS_ROLES as readonly string[]).includes(r));
-
-  if (!isOwner && email) {
-    try {
-      const rows = (await db`
-        select active, role from portal_admins where lower(email) = ${email} limit 1
-      `) as Array<{ active: boolean; role: string }>;
-      if (rows[0]?.active && rows[0]?.role === "admin") isOwner = true;
-    } catch {
-      /* laat isOwner staan */
-    }
-  }
-
-  if (isOwner) {
-    const withOwner = [...new Set<RoleKey>([...roles, "owner"])];
-    return { roles: withOwner, permissions: [...PERMISSIONS], isOwner: true, email };
-  }
-
-  let permissions: Permission[] = [];
-  if (roles.length > 0) {
-    try {
-      const rows = (await db`
-        select distinct rp.permission
-        from role_permissions rp
-        where rp.allowed and rp.role::text = any(${roles})
-      `) as Array<{ permission: string }>;
-      permissions = rows.map((r) => r.permission as Permission);
-    } catch {
-      permissions = [];
-    }
-  }
-  return { roles, permissions, isOwner: false, email };
+  const granted = await loadGrantedPermissions(access.roles);
+  const permissions = granted.filter((p): p is Permission =>
+    (PERMISSIONS as readonly string[]).includes(p),
+  );
+  return { roles: access.roles, permissions, isOwner: false, email: access.email };
 }
 
 /** Werpt een fout wanneer de gebruiker het recht niet heeft. */
@@ -243,14 +200,10 @@ export const fetchPortalUsers = createServerFn({ method: "GET" })
  * niet afnemen van een rol wanneer dat je laatste toegang tot de rechten is.
  */
 async function assertNoSelfLockout(context: Ctx, role: string) {
-  const email = await resolveEmail(context);
-  if (isSuperAdminEmail(email ?? undefined)) return;
+  const mine = await loadMyRights(context);
+  if (mine.isOwner) return;
   const db = await sql();
-  const mine = (await db`
-    select role::text as role from user_roles where user_id = ${context.userId}::uuid
-  `) as Array<{ role: string }>;
-  const roles = mine.map((r) => r.role);
-  if (roles.some((r) => (FULL_ACCESS_ROLES as readonly string[]).includes(r))) return;
+  const roles = mine.roles;
   if (!roles.includes(role)) return;
 
   const others = roles.filter((r) => r !== role);

@@ -1,7 +1,7 @@
 /**
  * POST /api/storage/upload-url
  * Geeft een pre-signed upload-URL (60 s) voor de Europese Scaleway-bucket.
- * Enkel voor ingelogde portaalgebruikers.
+ * Enkel voor medewerkers met een beheerrecht (eigenaars altijd).
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
@@ -16,15 +16,10 @@ const bodySchema = z.object({
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"];
 
 async function requireUser(request: Request): Promise<Response | null> {
-  const header = request.headers.get("authorization");
-  if (!header?.startsWith("Bearer ")) return new Response("Unauthorized", { status: 401 });
-  const { verifyAuthToken } = await import("@/lib/neon-data.server");
-  try {
-    await verifyAuthToken(header.slice(7).trim());
-    return null;
-  } catch {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const { guardApiRouteAny } = await import("@/lib/route-permission.server");
+  const { UPLOAD_PERMISSIONS } = await import("@/lib/permission-core.server");
+  const guard = await guardApiRouteAny(request, UPLOAD_PERMISSIONS);
+  return "response" in guard ? guard.response : null;
 }
 
 export const Route = createFileRoute("/api/storage/upload-url")({

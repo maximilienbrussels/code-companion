@@ -10,8 +10,8 @@ export const Route = createFileRoute("/api/media/scaleway/delete")({
   server: {
     handlers: {
       DELETE: async ({ request }) => {
-        const { requireRouteAuth } = await import("@/lib/route-auth.server");
-        const guard = await requireRouteAuth(request);
+        const { guardApiRouteAny } = await import("@/lib/route-permission.server");
+        const guard = await guardApiRouteAny(request, ["manage_media"]);
         if ("response" in guard) return guard.response;
 
         const parsed = schema.safeParse(await request.json().catch(() => ({})));

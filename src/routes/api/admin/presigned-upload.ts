@@ -2,7 +2,7 @@
  * POST /api/admin/presigned-upload
  *
  * Geeft een pre-signed PUT-URL (60 s) voor de Europese Scaleway-bucket. Enkel
- * voor beheerders met een geldige sessie (JWT) én het recht `manage_settings`.
+ * voor medewerkers met een geldige sessie (JWT) én een beheerrecht (zie UPLOAD_PERMISSIONS).
  * De bytes gaan rechtstreeks van de browser naar Scaleway.
  */
 import { createFileRoute } from "@tanstack/react-router";
@@ -18,8 +18,9 @@ export const Route = createFileRoute("/api/admin/presigned-upload")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { guardApiRoute } = await import("@/lib/route-permission.server");
-        const guard = await guardApiRoute(request, "manage_settings");
+        const { guardApiRouteAny } = await import("@/lib/route-permission.server");
+        const { UPLOAD_PERMISSIONS } = await import("@/lib/permission-core.server");
+        const guard = await guardApiRouteAny(request, UPLOAD_PERMISSIONS);
         if ("response" in guard) return guard.response;
 
         const parsed = bodySchema.safeParse(await request.json().catch(() => null));

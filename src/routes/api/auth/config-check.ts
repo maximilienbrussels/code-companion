@@ -19,20 +19,26 @@ const REQUIRED_SECRETS: Record<string, string[]> = {
   STRIPE_SECRET_KEY: ["STRIPE_SECRET_KEY"],
 };
 
-const ADMIN_ROLES = new Set(["admin", "owner", "super_admin"]);
-
 async function isAdminRequest(request: Request): Promise<boolean> {
   const token = process.env["CONFIG_CHECK_TOKEN"];
   if (token && request.headers.get("x-config-check-token") === token) return true;
 
+  // Bearer-sessie (portaal) → dezelfde centrale rechtencontrole als elke andere route.
+  if (request.headers.get("authorization")?.startsWith("Bearer ")) {
+    const { guardApiRoute } = await import("@/lib/route-permission.server");
+    const guard = await guardApiRoute(request, "manage_settings");
+    return !("response" in guard);
+  }
+
+  // Cookie-sessie (OAuth-login) → zelfde controle op basis van de sessieclaims.
   try {
-    const { SESSION_COOKIE, readCookie, resolveRole } = await import("@/lib/google-oauth.server");
+    const { SESSION_COOKIE, readCookie } = await import("@/lib/google-oauth.server");
     const cookie = readCookie(request, SESSION_COOKIE);
     if (!cookie) return false;
     const { verifySession } = await import("@/lib/local-auth.server");
     const claims = await verifySession(cookie);
-    const role = await resolveRole(String(claims.email ?? ""), "user");
-    return ADMIN_ROLES.has(role);
+    const { hasPermission } = await import("@/lib/permission-core.server");
+    return hasPermission({ userId: String(claims.sub ?? ""), claims }, "manage_settings");
   } catch {
     return false;
   }

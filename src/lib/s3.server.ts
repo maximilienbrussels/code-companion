@@ -7,11 +7,42 @@
  */
 import {
   DeleteObjectCommand,
+  GetBucketCorsCommand,
+  HeadObjectCommand,
   PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+/** Status van de opslagconfiguratie zonder ooit een sleutelwaarde te lekken. */
+export type S3ConfigStatus = {
+  configured: boolean;
+  hasAccessKey: boolean;
+  hasSecretKey: boolean;
+  bucket: string;
+  endpoint: string;
+  region: string;
+  publicPrefix: string;
+};
+
+export function s3ConfigStatus(): S3ConfigStatus {
+  const region = process.env["S3_REGION"] || "fr-par";
+  const bucket = process.env["S3_BUCKET_NAME"] || "maximilien-media";
+  const hasAccessKey = Boolean(process.env["S3_ACCESS_KEY"]);
+  const hasSecretKey = Boolean(process.env["S3_SECRET_KEY"]);
+  return {
+    configured: hasAccessKey && hasSecretKey,
+    hasAccessKey,
+    hasSecretKey,
+    bucket,
+    endpoint: process.env["S3_ENDPOINT"] || "https://s3.fr-par.scw.cloud",
+    region,
+    publicPrefix: (
+      process.env["S3_PUBLIC_URL_PREFIX"] || `https://${bucket}.s3.${region}.scw.cloud`
+    ).replace(/\/+$/, ""),
+  };
+}
 
 
 export type S3Config = {
@@ -244,4 +275,42 @@ export async function applyBucketCors(): Promise<{ bucket: string; origins: stri
     }),
   );
   return { bucket: cfg.bucket, origins };
+}
+
+/** Metadata van één object (grootte en type) zonder het te downloaden. */
+export async function headObject(
+  fileKey: string,
+): Promise<{ size: number; contentType: string | null; lastModified: string | null }> {
+  const cfg = s3Config();
+  const res = await client(cfg).send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: fileKey }));
+  return {
+    size: Number(res.ContentLength ?? 0),
+    contentType: res.ContentType ?? null,
+    lastModified: res.LastModified ? res.LastModified.toISOString() : null,
+  };
+}
+
+/** Staan de CORS-regels al op de bucket? (`null` = kon niet gecontroleerd worden). */
+export async function bucketCorsStatus(): Promise<{
+  configured: boolean | null;
+  origins: string[];
+  error: string | null;
+}> {
+  try {
+    const cfg = s3Config();
+    const res = await client(cfg).send(new GetBucketCorsCommand({ Bucket: cfg.bucket }));
+    const origins = (res.CORSRules ?? []).flatMap((r) => r.AllowedOrigins ?? []);
+    return { configured: (res.CORSRules ?? []).length > 0, origins, error: null };
+  } catch (error) {
+    const name = (error as { name?: string; Code?: string } | null)?.name ?? "";
+    const code = (error as { Code?: string } | null)?.Code ?? "";
+    if (/NoSuchCORSConfiguration/i.test(name) || /NoSuchCORSConfiguration/i.test(code)) {
+      return { configured: false, origins: [], error: null };
+    }
+    return {
+      configured: null,
+      origins: [],
+      error: error instanceof Error ? error.message : "Onbekende fout",
+    };
+  }
 }
