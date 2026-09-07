@@ -16,14 +16,10 @@ const bodySchema = z
   });
 
 async function handler({ request }: { request: Request }) {
-  const header = request.headers.get("authorization");
-  if (!header?.startsWith("Bearer ")) return new Response("Unauthorized", { status: 401 });
-  const { verifyAuthToken } = await import("@/lib/neon-data.server");
-  try {
-    await verifyAuthToken(header.slice(7).trim());
-  } catch {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const { guardApiRouteAny } = await import("@/lib/route-permission.server");
+  const { UPLOAD_PERMISSIONS } = await import("@/lib/permission-core.server");
+  const guard = await guardApiRouteAny(request, UPLOAD_PERMISSIONS);
+  if ("response" in guard) return guard.response;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Ongeldige aanvraag." }, { status: 400 });

@@ -8,8 +8,9 @@ export const Route = createFileRoute("/api/media/scaleway/list")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const { requireRouteAuth } = await import("@/lib/route-auth.server");
-        const guard = await requireRouteAuth(request);
+        const { guardApiRouteAny } = await import("@/lib/route-permission.server");
+        const { UPLOAD_PERMISSIONS } = await import("@/lib/permission-core.server");
+        const guard = await guardApiRouteAny(request, ["view_media", ...UPLOAD_PERMISSIONS]);
         if ("response" in guard) return guard.response;
 
         const params = new URL(request.url).searchParams;
