@@ -507,3 +507,24 @@ export const updateShopHero = createServerFn({ method: "POST" })
       throw safeError(error, "De hero-afbeelding kon niet opgeslagen worden.");
     }
   });
+
+/** Webshop-hero leegmaken: de webshop valt terug op het standaardbeeld. */
+export const clearShopHero = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    try {
+      await requirePermission(context, "manage_products");
+      const { saveShopHero } = await import("./shop-admin.server");
+      const email = (context.claims as { email?: string } | null)?.email ?? null;
+      await saveShopHero({ url: null, mediaId: null, alt: null }, email);
+      await log(context, {
+        action: "update",
+        entity: "shop_hero",
+        summary: "Webshop-hero verwijderd (standaardbeeld actief)",
+        details: { after: null },
+      });
+      return { ok: true as const };
+    } catch (error) {
+      throw safeError(error, "De hero-afbeelding kon niet verwijderd worden.");
+    }
+  });
