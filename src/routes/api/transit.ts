@@ -149,18 +149,14 @@ export const Route = createFileRoute("/api/transit")({
         const raw = url.searchParams.get("lang");
         const lang: Lang = raw === "fr" || raw === "en" ? raw : "nl";
 
-        const key = process.env["BELGIAN_MOBILITY_API_KEY"];
         let departures: Departure[] = [];
         try {
-          const [stib, nmbs] = await Promise.all([
-            key ? stibDepartures(key) : Promise.resolve([]),
-            nmbsDepartures(),
-          ]);
-          departures = [...stib, ...nmbs];
+          departures = await nmbsDepartures();
         } catch (err) {
           console.error("[transit] onverwachte fout", err);
           departures = [];
         }
+
 
         return Response.json(
           {
