@@ -15,15 +15,6 @@ type Departure = {
   stop: string;
 };
 
-/** Haltes bij de boerderij: IJzer/Yser (metro 2 & 6) en Schipperijkaai (bus 46 / tram 51). */
-const STIB_POINTS = ["8301", "8302", "1234", "1235"];
-
-/** Beide bekende MIVB/STIB-endpoints; we proberen ze na elkaar. */
-const STIB_URLS = [
-  "https://api-management-opendata-production.developer.azure-api.net/api/datasets/stibmivb/rt/WaitingTimes",
-  "https://api.stib-mivb.be/OperationMonitoring/4.0/PassingTimeByPoint",
-];
-
 /** iRail is de open NMBS/SNCB-bron voor live vertrektijden (geen sleutel nodig). */
 const NMBS_URL =
   "https://api.irail.be/liveboard/?station=Brussels-North&format=json&arrdep=departure&lang=nl";
@@ -61,42 +52,6 @@ function iconFor(line: string): string {
   return "🚌";
 }
 
-/** MIVB/STIB realtime wachttijden voor IJzer/Yser en Schipperijkaai. */
-async function stibDepartures(key: string): Promise<Departure[]> {
-  let data: unknown = null;
-  for (const base of STIB_URLS) {
-    data = await fetchJson(`${base}/${STIB_POINTS.join("%2C")}`, {
-      "Ocp-Apim-Subscription-Key": key,
-      Accept: "application/json",
-    });
-    if (data && typeof data === "object") break;
-    data = null;
-  }
-  if (!data || typeof data !== "object") return [];
-
-  const points = (data as { points?: unknown[] }).points ?? [];
-  const out: Departure[] = [];
-  for (const point of points) {
-    const p = point as {
-      pointId?: string;
-      passingTimes?: { lineId?: string; destination?: { fr?: string; nl?: string }; expectedArrivalTime?: string }[];
-    };
-    const stop = p.pointId && ["1234", "1235"].includes(p.pointId) ? "Schipperijkaai / Quai du Batelage" : "IJzer / Yser";
-    for (const t of p.passingTimes ?? []) {
-      const line = String(t.lineId ?? "");
-      out.push({
-        icon: iconFor(line),
-        line,
-        destination: t.destination?.nl ?? t.destination?.fr ?? "",
-        minutes: minutesUntil(t.expectedArrivalTime),
-        stop,
-      });
-    }
-  }
-  return out
-    .sort((a, b) => (a.minutes ?? 99) - (b.minutes ?? 99))
-    .slice(0, 6);
-}
 
 /** NMBS/SNCB live vertrektijden in Brussel-Noord. */
 async function nmbsDepartures(): Promise<Departure[]> {
@@ -194,18 +149,14 @@ export const Route = createFileRoute("/api/transit")({
         const raw = url.searchParams.get("lang");
         const lang: Lang = raw === "fr" || raw === "en" ? raw : "nl";
 
-        const key = process.env["BELGIAN_MOBILITY_API_KEY"];
         let departures: Departure[] = [];
         try {
-          const [stib, nmbs] = await Promise.all([
-            key ? stibDepartures(key) : Promise.resolve([]),
-            nmbsDepartures(),
-          ]);
-          departures = [...stib, ...nmbs];
+          departures = await nmbsDepartures();
         } catch (err) {
           console.error("[transit] onverwachte fout", err);
           departures = [];
         }
+
 
         return Response.json(
           {

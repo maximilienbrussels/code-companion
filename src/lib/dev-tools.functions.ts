@@ -129,7 +129,6 @@ export const setDevSecret = createServerFn({ method: "POST" })
           "SMTP_FROM",
           "INFOMANIAK_AI_API_KEY",
           "INFOMANIAK_PRODUCT_ID",
-          "BELGIAN_MOBILITY_API_KEY",
           "STRIPE_SECRET_KEY",
           "STRIPE_PUBLISHABLE_KEY",
           "STRIPE_WEBHOOK_SECRET",

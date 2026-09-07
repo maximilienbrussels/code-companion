@@ -63,41 +63,7 @@ async function geocode(query: string): Promise<{ lat: number; lon: number; label
 
 type Directions = { path: [number, number][]; distanceMeters: number; durationSeconds: number };
 
-async function fetchOrs(
-  from: { lat: number; lon: number },
-  profile: RouteProfile,
-  key: string,
-): Promise<Directions | null> {
-  const orsProfile = profile === "bike" ? "cycling-regular" : "foot-walking";
-  const res = await fetch(`https://api.openrouteservice.org/v2/directions/${orsProfile}/geojson`, {
-    method: "POST",
-    headers: { Authorization: key, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      coordinates: [
-        [from.lon, from.lat],
-        [FARM_COORD.lon, FARM_COORD.lat],
-      ],
-    }),
-    signal: AbortSignal.timeout(9000),
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as {
-    features?: {
-      geometry?: { coordinates?: [number, number][] };
-      properties?: { summary?: { distance?: number; duration?: number } };
-    }[];
-  };
-  const feature = json.features?.[0];
-  const coords = feature?.geometry?.coordinates;
-  if (!coords?.length) return null;
-  return {
-    path: coords.map(([lon, lat]) => [lat, lon] as [number, number]),
-    distanceMeters: feature?.properties?.summary?.distance ?? 0,
-    durationSeconds: feature?.properties?.summary?.duration ?? 0,
-  };
-}
-
-/** Sleutelloze terugval zodat de kaart ook zonder ORS-sleutel klopt. */
+/** Open routeringsdienst zonder sleutel (OSRM). */
 async function fetchOsrm(
   from: { lat: number; lon: number },
   profile: RouteProfile,
@@ -157,19 +123,11 @@ export const Route = createFileRoute("/api/route-map")({
           return Response.json({ error: "geocode_failed" }, { status: 404 });
         }
 
-        const key = process.env["OPENROUTESERVICE_API_KEY"] ?? process.env["ORS_API_KEY"];
         let directions: Directions | null = null;
         try {
-          if (key) directions = await fetchOrs(origin, profile, key);
+          directions = await fetchOsrm(origin, profile);
         } catch {
           directions = null;
-        }
-        if (!directions) {
-          try {
-            directions = await fetchOsrm(origin, profile);
-          } catch {
-            directions = null;
-          }
         }
         if (!directions) {
           return Response.json({ error: "route_failed" }, { status: 502 });
