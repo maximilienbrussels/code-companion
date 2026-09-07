@@ -15,14 +15,8 @@ type Departure = {
   stop: string;
 };
 
-/** Haltes bij de boerderij: IJzer/Yser (metro 2 & 6) en Schipperijkaai (bus 46 / tram 51). */
-const STIB_POINTS = ["8301", "8302", "1234", "1235"];
+/** iRail is de open NMBS/SNCB-bron voor live vertrektijden (geen sleutel nodig). */
 
-/** Beide bekende MIVB/STIB-endpoints; we proberen ze na elkaar. */
-const STIB_URLS = [
-  "https://api-management-opendata-production.developer.azure-api.net/api/datasets/stibmivb/rt/WaitingTimes",
-  "https://api.stib-mivb.be/OperationMonitoring/4.0/PassingTimeByPoint",
-];
 
 /** iRail is de open NMBS/SNCB-bron voor live vertrektijden (geen sleutel nodig). */
 const NMBS_URL =
