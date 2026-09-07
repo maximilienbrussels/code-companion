@@ -304,3 +304,110 @@ export const hardDeleteMedia = createServerFn({ method: "POST" })
     await db()`delete from media_assets where id = ${data.id}`;
     return { ok: true };
   });
+
+/* ------------------------------------------------------------- opslag → bibliotheek */
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+};
+
+function mimeFromKey(key: string): string {
+  const ext = (key.split(".").pop() ?? "").toLowerCase();
+  return MIME_BY_EXT[ext] ?? "image/jpeg";
+}
+
+function categoryFromKey(key: string): MediaCategory {
+  const parts = key.toLowerCase().split("/");
+  for (const part of parts) {
+    if ((MEDIA_CATEGORIES as readonly string[]).includes(part)) return part as MediaCategory;
+  }
+  return "general";
+}
+
+/**
+ * Registreert één bestand uit de Scaleway-bucket in de bibliotheek.
+ * Bestaat de sleutel al (ook in de prullenbak), dan wordt die rij hersteld en
+ * teruggegeven — er ontstaan nooit dubbele registraties.
+ */
+async function registerKey(key: string, email: string | null): Promise<MediaAsset> {
+  const { db } = await import("@/lib/neon.server");
+  const { s3Config, publicUrlFor, headObject } = await import("@/lib/s3.server");
+  const cleanKey = key.replace(/^\/+/, "");
+
+  const existing = (await db()`
+    update media_assets set deleted_at = null, updated_at = now()
+    where storage_key = ${cleanKey}
+    returning id, filename, mime_type, byte_size, width, height, category,
+              title, description, alt_text, storage_url, storage_key, created_at, updated_at
+  `) as unknown as Row[];
+  if (existing[0]) return toAsset(existing[0]);
+
+  const cfg = s3Config();
+  const meta = await headObject(cleanKey);
+  const filename = cleanKey.split("/").pop() ?? cleanKey;
+  const mime = meta.contentType && meta.contentType.startsWith("image/") ? meta.contentType : mimeFromKey(cleanKey);
+  const title = filename.replace(/\.[^.]+$/, "").replace(/^\d{10,}-/, "").replace(/[-_]+/g, " ").trim();
+
+  const rows = (await db()`
+    insert into media_assets
+      (filename, mime_type, byte_size, width, height, category, title, description, alt_text, storage_url, storage_key, created_by)
+    values
+      (${filename}, ${mime}, ${meta.size}, null, null, ${categoryFromKey(cleanKey)}, ${title}, '', '',
+       ${publicUrlFor(cfg, cleanKey)}, ${cleanKey}, ${email})
+    returning id, filename, mime_type, byte_size, width, height, category,
+              title, description, alt_text, storage_url, storage_key, created_at, updated_at
+  `) as unknown as Row[];
+  const row = rows[0];
+  if (!row) throw new Error("Registreren mislukt — geen databaseverbinding.");
+  return toAsset(row);
+}
+
+/** Eén bestand uit de opslag in de bibliotheek opnemen (en meteen bruikbaar maken). */
+export const registerStorageObject = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d: unknown) => z.object({ key: z.string().min(1).max(400) }).parse(d))
+  .handler(async ({ data, context }): Promise<MediaAsset> => {
+    await requirePermission(context, "manage_media");
+    const email = (context.claims as { email?: string } | null)?.email ?? null;
+    return registerKey(data.key, email);
+  });
+
+/** Meerdere bestanden (bv. een hele map) in één keer registreren. */
+export const registerStorageObjects = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ keys: z.array(z.string().min(1).max(400)).min(1).max(200) }).parse(d),
+  )
+  .handler(async ({ data, context }): Promise<{ assets: MediaAsset[]; failed: string[] }> => {
+    await requirePermission(context, "manage_media");
+    const email = (context.claims as { email?: string } | null)?.email ?? null;
+    const assets: MediaAsset[] = [];
+    const failed: string[] = [];
+    for (const key of data.keys) {
+      try {
+        assets.push(await registerKey(key, email));
+      } catch (error) {
+        console.error("[media] registreren mislukt:", key, error);
+        failed.push(key);
+      }
+    }
+    return { assets, failed };
+  });
+
+/** Welke opslagsleutels zitten al in de bibliotheek? (voor de Opslag-tab) */
+export const listRegisteredStorageKeys = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }): Promise<Record<string, string>> => {
+    await requirePermission(context, "view_media");
+    const { db } = await import("@/lib/neon.server");
+    const rows = (await db()`
+      select id, storage_key from media_assets where storage_key is not null and deleted_at is null
+    `) as unknown as Array<{ id: string; storage_key: string }>;
+    return Object.fromEntries(rows.map((r) => [r.storage_key, String(r.id)]));
+  });
