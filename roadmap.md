@@ -13,7 +13,7 @@
 - [ ] 5. Planning-generatie koppelen aan echte databank (reservaties, openingstijden) i.p.v. gokken.
 - [ ] 6. QR-code alleen op desktop; op mobiel enkel actieknop/scanner (6-teken code intern, geen extern secret).
 - [ ] 7. AI kan overzichten/codes/bevestigingen mailen via Brevo.
-- [ ] Databankmigratie 0034 (afhaalcodes) uitvoeren op live databank.
+- [x] Databankmigratie 0034 (afhaalcodes) uitgevoerd op live databank (ook 0036 certificaatcodes).
 
 ### Status (deze ronde)
 - [x] Taalslot in de chat (antwoord volledig in de taal van de bezoeker)
@@ -24,14 +24,14 @@
 - [x] Planning gebruikt de echte agenda uit de databank (openingsuren, uitzonderingen, activiteiten)
 - [x] QR-code enkel op desktop, niet op mobiel
 - [x] E-mailknop bij overzichten: Maxim mailt de planning via Brevo
-- [ ] Databankaanpassing 0034 (afhaalcodes) uitvoeren op de live databank — wacht op DATABASE_URL
-- [ ] Brevo-sleutel instellen zodat de e-mailknop echt verstuurt
+- [x] Databankaanpassing 0034 (afhaalcodes) uitgevoerd
+- [x] Brevo-sleutel ingesteld
 
 ## Nieuwe taken (import-sessie)
 - [ ] Werkende passkeys (WebAuthn) op profiel + login
 - [ ] "Verbonden Accounts" met live status per provider (Google, GitHub, Mastodon, Bluesky) + koppelen/ontkoppelen
 - [ ] Veilige e-mailwijziging met bevestigingslink via Brevo
-- [ ] Ontbrekende API-sleutels/secrets opvragen bij de gebruiker
+- [x] Ontbrekende API-sleutels/secrets opgevraagd en opgeslagen
 - [ ] Architectuur: intern UUID als enige sleutel, koppeltabel user_identities met subject-id per provider (incl. passkeys), e-mail als gewoon profielveld
 
 ## Mobiele polish + audit (deze sessie)
