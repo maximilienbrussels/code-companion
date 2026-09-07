@@ -34,6 +34,7 @@ import {
   getShopOrders,
   getShopHero,
   updateShopHero,
+  clearShopHero,
 } from "@/lib/shop-admin.functions";
 import { ImagePickerModal } from "@/components/portal/media/ImagePickerModal";
 import type { MediaAsset } from "@/lib/media.functions";
